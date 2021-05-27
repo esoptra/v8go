@@ -92,7 +92,8 @@ extern ValuePtr NewValueBigIntFromUnsigned(IsolatePtr iso_ptr, uint64_t v);
 extern ValuePtr NewValueBigIntFromWords(IsolatePtr iso_ptr,
                                         int sign_bit,
                                         int word_count,
-                                        const uint64_t* words);
+                                        const uint64_t* words);                          
+extern ValuePtr NewValueUInt8Array(IsolatePtr iso_ptr, const uint8_t* v);
 extern void ValueFree(ValuePtr ptr);
 const char* ValueToString(ValuePtr ptr);
 const uint32_t* ValueToArrayIndex(ValuePtr ptr);

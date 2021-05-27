@@ -54,6 +54,14 @@ func NewValue(iso *Isolate, val interface{}) (*Value, error) {
 		rtnVal = &Value{
 			ptr: C.NewValueString(iso.ptr, cstr),
 		}
+	case []uint8:
+		//cUint8Array := C.CUint8Array(v)
+	//length := len(v.([]uint8))
+	cUint8Array := C.malloc(2)
+		defer C.free(unsafe.Pointer(cUint8Array))
+		rtnVal = &Value{
+			ptr: C.NewValueUInt8Array(iso.ptr, cUint8Array),
+		}
 	case int32:
 		rtnVal = &Value{
 			ptr: C.NewValueInteger(iso.ptr, C.int(v)),

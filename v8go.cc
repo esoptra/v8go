@@ -42,7 +42,7 @@ typedef struct {
   Isolate* iso;
   Persistent<Template> ptr;
 } m_template;
-
+ 
 const char* CopyString(std::string str) {
   int len = str.length();
   char* mem = (char*)malloc(len + 1);
@@ -557,6 +557,16 @@ ValuePtr NewValueString(IsolatePtr iso_ptr, const char* v) {
   val->ctx = ctx;
   val->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(
       iso, String::NewFromUtf8(iso, v).ToLocalChecked());
+  return tracked_value(ctx, val);
+}
+
+ValuePtr NewValueUInt8Array(IsolatePtr iso_ptr, const uint8_t* v) {
+  ISOLATE_SCOPE_INTERNAL_CONTEXT(iso_ptr);
+  m_value* val = new m_value;
+  val->iso = iso;
+  val->ctx = ctx;
+  val->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(
+      iso, Uint8Array::NewFromUInt8(iso, v).ToLocalChecked());
   return tracked_value(ctx, val);
 }
 
