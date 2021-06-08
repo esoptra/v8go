@@ -190,7 +190,7 @@ extern RtnValue ObjectTemplateNewInstance(TemplatePtr ptr, ContextPtr ctx_ptr);
 extern void ObjectTemplateSetInternalFieldCount(TemplatePtr ptr,
                                                 int field_count);
 extern int ObjectTemplateInternalFieldCount(TemplatePtr ptr);
-extern void ThrowException(IsolatePtr iso_ptr, const char* message); // TwinTag added
+extern void ThrowException(IsolatePtr iso_ptr, const char* message);
 extern TemplatePtr NewFunctionTemplate(IsolatePtr iso_ptr, int callback_ref);
 extern RtnValue FunctionTemplateGetFunction(TemplatePtr ptr,
                                             ContextPtr ctx_ptr);
@@ -221,8 +221,8 @@ uint32_t ValueToUint32(ValuePtr ptr);
 extern ValueBigInt ValueToBigInt(ValuePtr ptr);
 extern RtnValue ValueToObject(ValuePtr ptr);
 int ValueSameValue(ValuePtr ptr, ValuePtr otherPtr);
-extern uint8_t* ValueToUint8Array(ValuePtr ptr); // TwinTag added
-extern uint64_t ValueToArrayLength(ValuePtr ptr); // TwinTag added
+extern uint8_t* ValueToUint8Array(ValuePtr ptr);
+extern uint64_t ValueToArrayLength(ValuePtr ptr);
 int ValueIsUndefined(ValuePtr ptr);
 int ValueIsNull(ValuePtr ptr);
 int ValueIsNullOrUndefined(ValuePtr ptr);
