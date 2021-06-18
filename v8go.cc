@@ -560,15 +560,36 @@ ValuePtr NewValueString(IsolatePtr iso_ptr, const char* v) {
   return tracked_value(ctx, val);
 }
 
-ValuePtr NewValueUInt8Array(IsolatePtr iso_ptr, const uint8_t* v) {
+// Create a new v8go Value representing a uint8_t array.
+// The function takes ownership over the incoming array's memory.
+ValuePtr NewValueUint8Array(IsolatePtr iso_ptr, const uint8_t *v, int len) {
   ISOLATE_SCOPE_INTERNAL_CONTEXT(iso_ptr);
+  Local<Context> c = ctx->ptr.Get(iso);
+
+  // The Context::Enter/Exit is only needed when calling this code from low-level unit tests,
+  // otherwise ArrayBuffer::New() trips over missing context.
+  // They are not needed when this code gets called through an executing script.
+  c->Enter();
+
+  std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(
+    static_cast<void*>(const_cast<uint8_t*>(v)), len,
+    [](void* data, size_t length, void *deleter_data) {
+      free(data);
+      }, nullptr);
+
+  Local<ArrayBuffer> arbuf = ArrayBuffer::New(iso, std::move(bs));
+
   m_value* val = new m_value;
   val->iso = iso;
   val->ctx = ctx;
   val->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(
-      iso, Uint8Array::NewFromUInt8(iso, v).ToLocalChecked());
+      iso, Uint8Array::New(arbuf, 0, len));
+
+  c->Exit(); // see comment above
+
   return tracked_value(ctx, val);
 }
+
 
 ValuePtr NewValueBoolean(IsolatePtr iso_ptr, int v) {
   ISOLATE_SCOPE_INTERNAL_CONTEXT(iso_ptr);
@@ -697,6 +718,24 @@ ValueBigInt ValueToBigInt(ValuePtr ptr) {
   bint.ToLocalChecked()->ToWordsArray(&sign_bit, &word_count, words);
   ValueBigInt rtn = {words, word_count, sign_bit};
   return rtn;
+}
+
+// Returns copy of uint8 array, allocated on the heap.
+// The caller is responsible for freeing it.
+uint8_t* ValueToUint8Array(ValuePtr ptr) {
+  LOCAL_VALUE(ptr);
+  MaybeLocal<Uint8Array> array = value.As<Uint8Array>();
+  int length = array.ToLocalChecked()->ByteLength();
+  uint8_t* bytes = new uint8_t[length];
+  memcpy(bytes, array.ToLocalChecked()->Buffer()->GetBackingStore()->Data(), length);
+  return bytes;
+}
+
+// Returns length of the array (number of elements, not number of bytes)
+uint64_t ValueToArrayLength(ValuePtr ptr) {
+  LOCAL_VALUE(ptr);
+  MaybeLocal<TypedArray> array = value.As<TypedArray>();
+  return array.ToLocalChecked()->Length();
 }
 
 ValuePtr ValueToObject(ValuePtr ptr) {
@@ -985,6 +1024,19 @@ int ValueIsModuleNamespaceObject(ValuePtr ptr) {
   LOCAL_VALUE(ptr)        \
   Local<Object> obj = value.As<Object>()
 
+ValuePtr NewObject(IsolatePtr iso_ptr) {
+  ISOLATE_SCOPE_INTERNAL_CONTEXT(iso_ptr);
+  Local<Context> c = ctx->ptr.Get(iso);
+  Local<Object> obj = Object::New(iso);
+
+  m_value* val = new m_value;
+  val->iso = iso;
+  val->ctx = ctx;
+  val->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(iso, obj);
+
+  return tracked_value(ctx, val);
+}
+
 void ObjectSet(ValuePtr ptr, const char* key, ValuePtr val_ptr) {
   LOCAL_OBJECT(ptr);
   Local<String> key_val =
@@ -1170,15 +1222,20 @@ ValuePtr PromiseResult(ValuePtr ptr) {
 
 /********** Function **********/
 
+static void buildCallArguments(Isolate* iso, Local<Value> *argv, int argc, ValuePtr args[])
+{
+  for (int i = 0; i < argc; i++) {
+    m_value* arg = static_cast<m_value*>(args[i]);
+    argv[i] = arg->ptr.Get(iso);
+  }
+}
+
 RtnValue FunctionCall(ValuePtr ptr, int argc, ValuePtr args[]) {
   LOCAL_VALUE(ptr)
   RtnValue rtn = {nullptr, nullptr};
   Local<Function> fn = Local<Function>::Cast(value);
   Local<Value> argv[argc];
-  for (int i = 0; i < argc; i++) {
-    m_value* arg = static_cast<m_value*>(args[i]);
-    argv[i] = arg->ptr.Get(iso);
-  }
+  buildCallArguments(iso, argv, argc, args);
   Local<Value> recv = Undefined(iso);
   MaybeLocal<Value> result = fn->Call(local_ctx, recv, argc, argv);
   if (result.IsEmpty()) {
@@ -1193,7 +1250,32 @@ RtnValue FunctionCall(ValuePtr ptr, int argc, ValuePtr args[]) {
   return rtn;
 }
 
+RtnValue FunctionNewInstance(ValuePtr ptr, int argc, ValuePtr args[]) {
+  LOCAL_VALUE(ptr)
+  RtnValue rtn = {nullptr, nullptr};
+  Local<Function> fn = Local<Function>::Cast(value);
+  Local<Value> argv[argc];
+  buildCallArguments(iso, argv, argc, args);
+  MaybeLocal<Object> result = fn->NewInstance(local_ctx, argc, argv);
+  if (result.IsEmpty()) {
+    rtn.error = ExceptionError(try_catch, iso, local_ctx);
+    return rtn;
+  }
+  m_value* rtnval = new m_value;
+  rtnval->iso = iso;
+  rtnval->ctx = ctx;
+  rtnval->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(iso, result.ToLocalChecked());
+  rtn.value = tracked_value(ctx, rtnval);
+  return rtn;
+}
+
 /******** Exceptions *********/
+
+void ThrowException(IsolatePtr iso_ptr, const char* message) {
+  ISOLATE_SCOPE(iso_ptr);
+  Local<String> msg = String::NewFromUtf8(iso, message).ToLocalChecked();
+  iso->ThrowException(msg);
+}
 
 ValuePtr ExceptionError(IsolatePtr iso_ptr, const char* message) {
   ISOLATE_SCOPE(iso_ptr);
@@ -1266,4 +1348,55 @@ const char* Version() {
 void SetFlags(const char* flags) {
   V8::SetFlagsFromString(flags);
 }
+
+/************** ArrayBuffer support *****************/
+
+// Create a new ArrayBuffer value of the requested size
+ValuePtr NewArrayBuffer(IsolatePtr iso_ptr, size_t byte_length) {
+  ISOLATE_SCOPE_INTERNAL_CONTEXT(iso_ptr);
+  Local<Context> c = ctx->ptr.Get(iso);
+
+  // The Context::Enter/Exit is only needed when calling this code from low-level unit tests,
+  // otherwise ArrayBuffer::New() trips over missing context.
+  // They are not needed when this code gets called through an executing script.
+  c->Enter();
+
+  std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(iso, byte_length);
+  Local<ArrayBuffer> arbuf = ArrayBuffer::New(iso, std::move(bs));
+
+  m_value* val = new m_value;
+  val->iso = iso;
+  val->ctx = ctx;
+  val->ptr = Persistent<Value, CopyablePersistentTraits<Value>>(iso, arbuf);
+
+  c->Exit(); // see comment above
+
+  return tracked_value(ctx, val);
+}
+
+// Obtain length in bytes of this ArrayBuffer
+size_t ArrayBufferByteLength(ValuePtr ptr) {
+  LOCAL_VALUE(ptr);
+  Local<ArrayBuffer> ab = value.As<ArrayBuffer>();
+  return ab->ByteLength();
+}
+
+// Returns pointer into ArrayBuffer's BackingStore.
+// The caller is supposed to have a ref on the ArrayBuffer so that the BackingStore stays valid.
+void* GetArrayBufferBytes(ValuePtr ptr) {
+  LOCAL_VALUE(ptr);
+  Local<ArrayBuffer> ab = value.As<ArrayBuffer>();
+  return ab->GetBackingStore()->Data();
+}
+
+// Writes into the ArrayBuffer's BackingStore.
+// The caller is responsible for respecting buffer boundaries.
+// The caller is also supposed to have a ref on the ArrayBuffer so that the BackingStore stays valid.
+void PutArrayBufferBytes(ValuePtr ptr, size_t byteOffset, const char *bytes, size_t byteLength) {
+  LOCAL_VALUE(ptr);
+  Local<ArrayBuffer> ab = value.As<ArrayBuffer>();
+  uint8_t *data = (uint8_t*) ab->GetBackingStore()->Data();
+  memcpy(data+byteOffset, bytes, byteLength);
+}
+
 }
