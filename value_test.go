@@ -6,6 +6,7 @@ package v8go_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"math"
 	"math/big"
@@ -539,6 +540,27 @@ func TestValueFunction(t *testing.T) {
 		t.Errorf("Expected success but got: %v", err)
 	}
 
+}
+
+func TestNewStringFromByteArray(t *testing.T) {
+	t.Parallel()
+	ctx := v8.NewContext()
+	iso := ctx.Isolate()
+
+	inputString := "CN7ySxWjjWNpbYPB1n/TBR8avujZS2cHdXRR5ZM7Fi6QBjlVzBqPu0CI9pQXcW9fvbMXdqU+57XY/QdGozJT19+gbQDM0ZQVzjwqtpyLorcPHjMqum+7dHD6XF5cXo3NZlKGsxcnvSVyClBDU5M1dUCe8bB9yV0wVM6ge+0WAmTX2GYbncilTjDw0bSJI1Z+71NT8UQCfmimKhVxJiKrnkaTrTw2Ma/1I2w4Dny3cRlFtCtob9cvNOeeIm8HtQoi/7HXoE0uFr1C39OL2hCC1TJsxX94djtNFqd9aUOPYrwT+zErSokSvbNYS5WpEjEpRJze9+TCV9NLmqCnARK4Bw"
+	byts, _ := base64.RawStdEncoding.DecodeString(inputString)
+
+	expected := "ÞòK£cimÁÖÓ¾èÙKgutQå;.9UÌ»@öqo_½³v¥>çµØýF£2S×ß m"
+	val, err := v8.NewStringFromByteArray(iso, byts)
+	if err != nil {
+		t.Errorf("expected nil but got error %#v", err)
+	}
+	if !val.IsString() {
+		t.Errorf("expected string but got %s", reflect.TypeOf(val))
+	}
+	if val.String() != expected {
+		t.Errorf("expected not same as actual")
+	}
 }
 
 func TestValueSameValue(t *testing.T) {
