@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	"rogchap.com/v8go"
-	v8 "rogchap.com/v8go"
+	"github.com/esoptra/v8go"
+	v8 "github.com/esoptra/v8go"
 )
 
 func TestObjectMethodCall(t *testing.T) {

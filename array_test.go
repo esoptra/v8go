@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	v8 "rogchap.com/v8go"
+	v8 "github.com/esoptra/v8go"
 )
 
 func reverseUint8ArrayFunctionCallback(info *v8.FunctionCallbackInfo) *v8.Value {
