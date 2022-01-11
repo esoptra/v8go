@@ -53,6 +53,7 @@ func Null(iso *Isolate) *Value {
 	return iso.null
 }
 
+// NewStringFromByteArray will create a js string from byte array
 func NewStringFromByteArray(iso *Isolate, val []byte) (*Value, error) {
 	if iso == nil {
 		return nil, errors.New("v8go: failed to create new Value: Isolate cannot be <nil>")
